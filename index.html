@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Ekran Yansıtma</title>
+  <style>
+    video { width: 100%; max-width: 600px; background: black; }
+    button { padding: 10px 20px; font-size: 16px; margin: 10px 0; }
+  </style>
+</head>
+<body>
+  <h2>Ekran Yansıtma</h2>
+  <button onclick="ekranPaylas()">Ekranı Paylaş</button><br>
+  <video id="video" autoplay playsinline controls></video>
+
+  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+  <script>
+    const socket = io(); 
+    const video = document.getElementById('video');
+    let peerConnection;
+    const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+    socket.on('signal', async (data) => {
+      if (!peerConnection) baglantiOlustur();
+      if (data.offer) {
+        await peerConnection.setRemoteDescription(data.offer);
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        socket.emit('signal', { answer });
+      } else if (data.answer) {
+        await peerConnection.setRemoteDescription(data.answer);
+      } else if (data.candidate) {
+        await peerConnection.addIceCandidate(data.candidate);
+      }
+    });
+
+    function baglantiOlustur() {
+      peerConnection = new RTCPeerConnection(config);
+      peerConnection.onicecandidate = (e) => {
+        if (e.candidate) socket.emit('signal', { candidate: e.candidate });
+      };
+      peerConnection.ontrack = (e) => {
+        video.srcObject = e.streams[0];
+      };
+    }
+
+    async function ekranPaylas() {
+      baglantiOlustur();
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      video.srcObject = stream;
+      stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      socket.emit('signal', { offer });
+    }
+  </script>
+</body>
+</html>
